@@ -83,19 +83,121 @@ tar zxvf [필요 라이브러리 압축 파일 명]
 
 ### openssl  설치
 
+openssl을 설치합니다. openssl 디렉터리로 이동한 뒤 설치를 위한 명령어를 입력합니다. 
+
+설치 위치: /data/apache/[openssl 디렉터리]
+
+```bash
+cd [설치 위치]
+./config -fPIC --prefix=[설치 위치] shared
+make && make install
+```
+
 ### arp 설치
+
+arp를 설치합니다. arp 디렉터리로 이동한 뒤 설치를 위한 명령어를 입력합니다.
+
+설치 위치:  /data/apache/[arp 디렉터리]
+
+```bash
+cd [설치 위치]
+./configure --prefix=[APR 설치 위치]
+make && make insall
+```
+
+make 도중 'libtoolT' 오류 발생 시 아래 명령어를 실행합니다. 
+
+```bash
+cp -arp libtool libtoolT
+```
 
 ### arp-util 설치
 
+arp-util를 설치합니다. arp-util 디렉터리로 이동한 뒤 설치를 위한 명령어를 입력합니다.
+
+설치 위치:  /data/apache/[arp-util 디렉터리]
+
+```bash
+cd [설치 위치]
+./configure --prefix=[설치 위치] --with-apr=[APR 설치 위치] (--with-openssl=[설치 위치])
+make && make insall
+```
+
+make 도중 expat.h 에서 에러가 발생하면 아래 명령어를 실행합니다.
+
+```bash
+yum install expat-devel
+```
+
 ### pcre 설치
+
+pcre를 설치합니다. pcre 디렉터리로 이동한 뒤 설치를 위한 명령어를 입력합니다.
+
+설치 위치:  /data/apache/[pcre 디렉터리]
+
+```bash
+cd [설치 위치]
+./configure (--enable-utf8) --prefix=[설치 위치] --with-apr=[ARP 설치 위치]
+make && make install
+```
 
 ### httpd 설치
 
+ 위 과정에서 아파치 설치를 위한 필수 라이브러리 설치를 모두 완료했다면 이제 아파치를 설치합니다. httpd 디렉터리로 이동한 뒤 설치를 위한 명령어를 입력합니다.
+
+설치 위치:  /data/apache/[httpd 디렉터리]
+
+```bash
+cd [설치 위치]
+./configure --prefix=[설치 위치] 
+	--enable-mods-shared=all --enable-so --enable-rewrite --enable-http \
+--enable-proxy --enable-proxy-http --enable-proxy-ajp --enable-proxy-balaner \
+--enable-ssl --enable-ext-filter --enable-proxy-connect --enable-cache \
+--enable-deflate --enable-suexec --enable-file-cache  --enable-modules=all \
+--with-apr=[ARP 설치 위치] \
+--with-apr-util=[ARP-UTILE 설치 위치] \
+--with-pcre=[PCRE 설치 위치] \
+--with-ssl=[OPENSSL 설치 위치] \
+--with-mpm=prefork
+make && make install
+```
+
 ### 일반계정으로 아파치 관리할 수 있도록 설정
 
-### 아파치 config 세팅
+일반 계정으로 아파치를 사용하기 위해서는 httpd 실행파일 소유자 및 소유그룹 권한 수정 작업과 httpd 설정 파일 수정 작업이 필요합니다. 각 작업 방법은 아래에서 설명합니다.
+
+http, https 기본 포트인 80, 443 포트를 사용하기 위해서는 root 권한이 필요합니다. 그렇기 때문에 소유그룹의 권한을 사용할 일반 계정으로 내려서 설정해 줍니다. 또한 특수 권한을 부여합니다. httpd 설치 디렉터리 아래에 존재하는 bin 디렉터리로 이동하면 아차피 실행 파일인 httpd 파일이 존재합니다. 해당 파일의 권한 수정 및 특수 권한 부여 작업을 진행합니다.
+
+해당 작업을 위해서는 root 권한이 불가피하게 필요합니다.
+
+```bash
+cd /data/apache/httpd-2.4.54
+sudo chown root:developer httpd
+sudo chmod chmod +s httpd
+```
+
+추가로 httpd.conf 파일에서 User와 Group 설정을 일반계정명으로 수정합니다.
+
+```bash
+vi /data/apache/httpd-2.4.54/conf/httpd.conf
+
+----------------------------------------------------------------
+
+User developer
+Group developer
+```
 
 ### 아파치 실행 및 확인
+
+이제 아파치 설치 및 설정이 모두 완료되었습니다. 아래 명령어로 아파치를 실행 및 중지하여 사용이 가능합니다.
+
+```bash
+//실행 명령어
+/data/apache/httpd-2.4.54/httpd -k start
+
+//중지 명령어
+/data/apache/httpd-2.4.54/httpd -k stop
+```
 
 출처
 
