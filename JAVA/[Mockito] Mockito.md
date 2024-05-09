@@ -31,6 +31,7 @@ Mock 객체를 만들어주고 이 객체가 할 행동을 stub을 통해 지정
 SpringBoot 2.2 이상이면 spring-boot-starter-test에 Mockito가 포함되어 있다. 따라서 별도의 의존성 추가 작업 없이 바로 사용할 수 있다.
 
 *jar 아이콘이 흐리게 보이는 이유는 build.gradle 파일에 spring-boot-starter-test가  testImplementation 으로 설정되어 있기 때문이다.*
+<img src="../Image/java-mockito-1.png">
 
 ### Given - When -Then
 
