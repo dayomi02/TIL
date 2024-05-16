@@ -155,4 +155,4 @@ docker-compose ps
 
 <img src="../Image/opensearch-install-4.png">
 
-[Docker](https://opensearch.org/docs/latest/install-and-configure/install-opensearch/docker/)
+출처: [Docker](https://opensearch.org/docs/latest/install-and-configure/install-opensearch/docker/)
