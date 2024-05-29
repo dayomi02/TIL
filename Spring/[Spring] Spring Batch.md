@@ -555,3 +555,32 @@ application_log_entity table properties
     
 
 ---
+
+
+
+
+## 출처
+
+[Spring Batch](https://spring.io/projects/spring-batch)
+
+[[한 줄 용어]배치(Batch)란? (velog.io)](https://velog.io/@jch9537/%ED%95%9C-%EC%A4%84-%EC%9A%A9%EC%96%B4%EB%B0%B0%EC%B9%98Batch%EB%9E%80)
+
+[[SpringBoot] SpringBatch 사용하기 (1) - Scheduler를 이용하여 Tasklet, Chunk 배치 만들기 (tistory.com)](https://jforj.tistory.com/353)
+
+[[스프링] batch + scheduler로 주기적인 파일 삭제 구현 (tistory.com)](https://gimmesome.tistory.com/204)
+
+[스프링 배치(Spring Batch) 시작하기 !😭 (tistory.com)](https://djlife.tistory.com/31)
+
+[Spring Batch (3) DB 스키마 (tistory.com)](https://zzang9ha.tistory.com/426)
+
+[@JobScope와 @StepScope (velog.io)](https://velog.io/@sa1341/JobScope%EC%99%80-StepScope)
+
+[Spring Batch (10) @JobScope, @StepScope (tistory.com)](https://zzang9ha.tistory.com/434)
+
+[Spring Batch - 개념, Tasklet Example(SimpleJob, FlowJob) (tistory.com)](https://fvor001.tistory.com/106)
+
+https://velog.io/@ohzzi/Spring-Boot가-데이터베이스를-읽어오는-방법을-공식-문서를-통해-알아보자
+
+[스프링 배치 실행 - Flow (tistory.com)](https://tonylim.tistory.com/432) (flow)
+
+openai chatgpt
