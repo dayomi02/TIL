@@ -556,7 +556,329 @@ application_log_entity table properties
 
 ---
 
+## 실습 - Chunk (2차)
 
+[메모](https://www.notion.so/9242b14b409f44858240cb61700af32c?pvs=21)
+
+SpringBatch에서 **Task 처리를 Chunk 단위를 이용하여 여러 개로 묶어 병렬적으로 처리**될 수 있도록 도와준다. Chunk란 데이터 덩어리로, **작업할 때 각 커밋 사이에 처리되는 row 수**를 의미한다. 즉, Chunk 지향 처리란 **한 번에 하나씩 데이터를 읽어 Chunk 라는 덩어리를 만든 뒤, Chunk 단위로 트랜잭션을 다루는 것을 의미**한다.
+
+Chunk 단위로 트랜잭션을 수행하기 때문에 **실패할 경우에는 해당 Chunk 만큼만 롤백**이 되고, 이전에 커밋된 트랜잭션 범위까지는 반영이 된다.
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/46f64df6-9c9c-4b4d-990a-52c9828dc042/8969bebe-5c25-4877-b1bd-7157fa55e4e0/Untitled.png)
+
+- ItemReader에서 데이터를 하나 읽어온다.
+- 읽어온 데이터를 ItemProcesser에서 가공한다.
+- 가공된 데이터들을 별도의 공간에 모은 뒤, Chunk 단위만큼 쌓이게 되면 ItemWriter에 전달하고 ItemWriter는 일괄 저장한다.
+
+***⇒ Reader와 Processer에서는 1건씩 처리되고, Writer에서는 Chunk 단위로 처리된다.***
+
+### Mongo 데이터 Json 파일로 변환하기 예제
+
+<aside>
+📌 **MongoDB에서 색인 대상 데이터를 읽어와서 json 파일로 변환해보자.**
+
+- ItemReader → MongoDB에서 색인 대상 데이터를 조회
+- ~~ItemProcessor → 조회된 데이터를 처리~~
+- ItemWriter → 처리된 데이터를 Json 파일로 저장
+</aside>
+
+- **소스 코드**
+    - Job 생성 (MongoToJsonConfig.java)
+        
+        ```java
+        import com.study.opensearch.entity.CommunityContents;
+        import com.study.opensearch.util.Constants;
+        import lombok.extern.slf4j.Slf4j;
+        import org.springframework.batch.core.Job;
+        import org.springframework.batch.core.Step;
+        import org.springframework.batch.core.configuration.annotation.StepScope;
+        import org.springframework.batch.core.job.builder.JobBuilder;
+        import org.springframework.batch.core.repository.JobRepository;
+        import org.springframework.batch.core.step.builder.StepBuilder;
+        import org.springframework.batch.item.ItemProcessor;
+        import org.springframework.batch.item.data.MongoCursorItemReader;
+        import org.springframework.batch.item.data.builder.MongoCursorItemReaderBuilder;
+        import org.springframework.batch.item.json.JacksonJsonObjectMarshaller;
+        import org.springframework.batch.item.json.JsonFileItemWriter;
+        import org.springframework.batch.item.json.builder.JsonFileItemWriterBuilder;
+        import org.springframework.beans.factory.annotation.Qualifier;
+        import org.springframework.beans.factory.annotation.Value;
+        import org.springframework.context.annotation.Bean;
+        import org.springframework.context.annotation.Configuration;
+        import org.springframework.core.io.FileSystemResource;
+        import org.springframework.data.domain.Sort;
+        import org.springframework.data.mongodb.core.MongoTemplate;
+        import org.springframework.data.mongodb.core.query.Criteria;
+        import org.springframework.data.mongodb.core.query.Query;
+        import org.springframework.transaction.PlatformTransactionManager;
+        
+        import java.util.Collections;
+        
+        @Slf4j
+        @Configuration
+        public class MongoToJsonJobConfig {
+        
+            private final JobRepository jobRepository;
+        
+            private final PlatformTransactionManager transactionManager;
+        
+            private final MongoTemplate mongoTemplate;
+        
+            private final Step registerLogStep;
+        
+            @Value("${index.docs.path}")
+            private String indexDocsPath;
+        
+            @Value("${index.docs.name}")
+            private String indexDocsName;
+        
+            @Value("${index.docs.keyCode}")
+            private String indexDocsKeyCode;
+        
+            public MongoToJsonJobConfig(JobRepository jobRepository, PlatformTransactionManager transactionManager,
+                                        MongoTemplate mongoTemplate,
+                                        @Qualifier("registerLogStep") Step registerLogStep) {
+                this.jobRepository = jobRepository;
+                this.transactionManager = transactionManager;
+                this.mongoTemplate = mongoTemplate;
+                this.registerLogStep = registerLogStep;
+            }
+        
+            @Bean
+            public Job mongoToJsonJob() {
+                return new JobBuilder("mongoToJsonJob", jobRepository)
+                        .start(mongoToJsonStep())
+                        .next(registerLogStep)
+                        .build();
+            }
+        
+            @Bean
+            public Step mongoToJsonStep() {
+                return new StepBuilder("mongoToJsonStep", jobRepository)
+                        .<CommunityContents, CommunityContents>chunk(1000, transactionManager)
+                        .reader(indexDocsItemReader())
+                        .writer(jsonFileItemWriter(null))
+                        .build();
+            }
+        
+            @Bean
+            public MongoCursorItemReader<CommunityContents> indexDocsItemReader() {
+                return new MongoCursorItemReaderBuilder<CommunityContents>()
+                        .name("indexDocsItemReader")
+                        .template(mongoTemplate)
+                        .targetType(CommunityContents.class)
+                        .query(new Query().addCriteria(Criteria.where(Constants.DOC_KEY_CODE).is(indexDocsKeyCode)))
+                        .sorts(Collections.singletonMap("publish_date", Sort.Direction.ASC))
+                        .build();
+            }
+        
+            @Bean
+            @StepScope
+            public JsonFileItemWriter<CommunityContents> jsonFileItemWriter(@Value("#{jobParameters['currentDate']}") String currentDate) {
+                String filePath = indexDocsPath + indexDocsName + "_" + currentDate + ".json";
+        
+                return new JsonFileItemWriterBuilder<CommunityContents>()
+                        .jsonObjectMarshaller(new JacksonJsonObjectMarshaller<>())
+                        .resource(new FileSystemResource(filePath))
+                        .name("jsonFileItemWriter")
+                        .build();
+            }
+        }
+        ```
+        
+    - Job 실행 (BatchRunnerConfig.java)
+        
+        ```java
+        @Scheduled(cron = "${schedule.mongoToJsonJob.cron}")
+            public void run() {
+                log.info("::: [{}] method Start :::", Thread.currentThread().getStackTrace()[1].getMethodName());
+        
+                if(!useSchedule) {
+                    return;
+                }
+        
+                LocalDateTime date = LocalDateTime.now();
+                String message = "Execute mongoToJsonJob at " + date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+                String currentDate = date.format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+        
+                try{
+                    JobParameters jobParameters = new JobParametersBuilder()
+                            .addString("keyCode", "BLIND")
+                            .addString("currentDate", currentDate)
+                            .addString("message", message)
+                            .toJobParameters();
+        
+                    jobLauncher.run(mongoToJsonJob, jobParameters);
+                }catch (Exception e){
+                    log.error("mongoToJsonJob Error : {}", e.getMessage());
+                }
+            }
+        ```
+        
+
+## 실습 - Chunk Rollback (2차)
+
+파일 명: `MongoToJsonJobConfig.java`
+
+processor 작업 처리 도중 예외가 발생하였다고 가정.
+
+```java
+private int count = 0;
+
+...
+
+    @Bean
+    public Step mongoToJsonStep() {
+        return new StepBuilder("mongoToJsonStep", jobRepository)
+                .<CommunityContents, CommunityContents>chunk(1000, transactionManager)
+                .reader(indexDocsItemReader())
+                **.processor(indexDocsItemProcesser())**
+                .writer(jsonFileItemWriter(null))
+                .build();
+    }
+    
+...
+
+    @Bean
+    public ItemProcessor<CommunityContents, CommunityContents> indexDocsItemProcesser() {
+        return item -> {
+            if(count == 1010){
+                **throw new RuntimeException("강제 예외 발생...!!!!");**
+            }
+            count++;
+          return item;
+        };
+    }
+```
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/46f64df6-9c9c-4b4d-990a-52c9828dc042/b13baecc-e052-4a90-8dc4-b357788f2e52/Untitled.png)
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/46f64df6-9c9c-4b4d-990a-52c9828dc042/92b6beed-94d0-45c4-b915-0cccab09d1f1/Untitled.png)
+
+Chunk 단위가 1000이기 때문에 이미 커밋된 트랜잭션 범위인 1번째~1000번째 데이터는 json 파일로 변환되었고, 실패한 Chunk인 1001번째 ~ 1010번째 데이터는 롤백되어 변환되지 않았다.
+
+## FlowJob (2차)
+
+Step을 순차적으로만 구성하는 것이 아닌 **특정한 상태에 따라 흐름을 전환하도록 구성**할 수 있다. `FlowJobBuilder`에 의해 생성된다.
+
+- Step이 실패하더라도 Job은 실패로 끝나지 않도록 해야 하는 경우.
+- Step이 성공했을 때 다음에 실행해야 할 Step을 구분해서 실행해야 하는 경우.
+- 특정 Step은 전혀 실행되지 않게 구성해야 하는 경우.
+
+Flow와 Job의 흐름을 구성하는 데만 관여하고 실제 비즈니스 로직은 Step에서만 이루어진다. FlowJob은 내부적으로 SimpleFlow 객체를 포함하고 있으며 Job 실행 시 호출된다. 단순한 Step으로 생성하는 SimpleJob 보다 FlowJob의 생성 구조가 더 복잡하고 많은 API를 제공한다.
+
+### SimpleJob vs FlowJob
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/46f64df6-9c9c-4b4d-990a-52c9828dc042/19d6eac7-d0ea-426e-9ae3-0d5a60b42954/Untitled.png)
+
+- **소스 코드**
+    
+    ```java
+    @Bean
+    public Job batchJob() {
+        return jobBuilderFactory.get("batchJob")
+    				    // step1이 성공한다면 step3 실행
+    				    // step1이 실패한다면 step2 실행
+                .start(step1())
+                .on("COMPLETED").to(step3())
+                .from(step1())
+                .on("FAILED").to(step2())
+                .end()
+                .build();
+    }
+    ```
+    
+    ```java
+    import lombok.RequiredArgsConstructor;
+    import lombok.extern.slf4j.Slf4j;
+    import org.springframework.batch.core.ExitStatus;
+    import org.springframework.batch.core.Job;
+    import org.springframework.batch.core.Step;
+    import org.springframework.batch.core.job.builder.JobBuilder;
+    import org.springframework.batch.core.repository.JobRepository;
+    import org.springframework.batch.core.step.builder.StepBuilder;
+    import org.springframework.batch.core.step.tasklet.Tasklet;
+    import org.springframework.batch.repeat.RepeatStatus;
+    import org.springframework.context.annotation.Bean;
+    import org.springframework.context.annotation.Configuration;
+    import org.springframework.orm.jpa.JpaTransactionManager;
+    
+    @Slf4j
+    @Configuration
+    @RequiredArgsConstructor
+    public class FlowJobConfig {
+    
+        private final JobRepository jobRepository;
+    
+        private final JpaTransactionManager transactionManager;
+    
+        @Bean
+        public Job flowJob() {
+            return new JobBuilder("flowJob", jobRepository)
+                    // step1이 성공한다면 step3 실행
+                    // step1이 실패한다면 step2 실행
+                    .start(step1())
+                    .on("COMPLETED").to(step3())
+                    .from(step1())
+                    .on("FAILED").to(step2())
+                    .end()
+                    .build();
+        }
+    
+        @Bean
+        public Step step1() {
+            return new StepBuilder("step1", jobRepository)
+                    .tasklet(tasklet1(), transactionManager)
+                    .build();
+        }
+    
+        @Bean
+        public Tasklet tasklet1() {
+            return (contribution, chunkContext) -> {
+                // tasklet1 로직...
+                log.info("::: Call tasklet1 :::");
+    
+    //            contribution.getStepExecution().setExitStatus(ExitStatus.FAILED);     // 강제 실패 처리
+    
+                return RepeatStatus.FINISHED;
+            };
+        }
+    
+        @Bean
+        public Step step2() {
+            return new StepBuilder("step2", jobRepository)
+                    .tasklet(tasklet2(), transactionManager)
+                    .build();
+        }
+    
+        @Bean
+        public Tasklet tasklet2() {
+            return (contribution, chunkContext) -> {
+                // tasklet2 로직...
+                log.info("::: Call tasklet2 :::");
+                return RepeatStatus.FINISHED;
+            };
+        }
+    
+        @Bean
+        public Step step3() {
+            return new StepBuilder("step3", jobRepository)
+                    .tasklet(tasklet3(), transactionManager)
+                    .build();
+        }
+    
+        @Bean
+        public Tasklet tasklet3() {
+            return (contribution, chunkContext) -> {
+                // tasklet3 로직...
+                log.info("::: Call tasklet3 :::");
+                return RepeatStatus.FINISHED;
+            };
+        }
+    
+    }
+    
+    ```
 
 
 ## 출처
@@ -581,6 +903,12 @@ application_log_entity table properties
 
 https://velog.io/@ohzzi/Spring-Boot가-데이터베이스를-읽어오는-방법을-공식-문서를-통해-알아보자
 
+[6. Spring Batch 가이드 - Chunk 지향 처리 (tistory.com)](https://jojoldu.tistory.com/331)
+
+[Spring Batch - Reference Documentation](https://docs.spring.io/spring-batch/docs/4.0.x/reference/html/index-single.html#chunkOrientedProcessing)
+
 [스프링 배치 실행 - Flow (tistory.com)](https://tonylim.tistory.com/432) (flow)
+
+[[Spring Batch] 스프링 배치 실행 - Flow (tistory.com)](https://heekng.tistory.com/177)
 
 openai chatgpt
